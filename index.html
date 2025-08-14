@@ -1,56 +1,117 @@
 <!DOCTYPE html>
 <html lang="tr">
 <head>
-    <title>Pasif Analiz Aracı</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canlı Analiz Aracı</title>
     <style>
         body { font-family: sans-serif; background-color: #f0f2f5; }
         .container { max-width: 900px; margin: 20px auto; padding: 20px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
         input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
         button { padding: 10px 15px; font-size: 16px; cursor: pointer; }
+        .options { margin-bottom: 20px; }
         .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;}
         .result-box { padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        .full-width { grid-column: span 2; }
+        h1, h2 { color: #333; }
         h2 { border-bottom: 2px solid #007bff; padding-bottom: 5px; }
-        pre { background: #eee; padding: 10px; white-space: pre-wrap; word-break: break-all; }
+        pre { background: #eee; padding: 10px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; }
+        /* YENİ STİL: Log kutusu için */
+        #log-output { width: 100%; height: 400px; background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', Courier, monospace; white-space: pre; overflow-wrap: normal; overflow-x: scroll; border-radius: 5px; margin-top: 20px; box-sizing: border-box; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Pasif Bilgi Toplama Aracı</h1>
+        <h1>Web Analiz Aracı</h1>
         <form id="analyze-form">
             <input type="text" id="domain-input" placeholder="example.com" required>
             <button type="submit">Analiz Et</button>
+            <div class="options">
+                <input type="checkbox" id="run-nikto-checkbox">
+                <label for="run-nikto-checkbox">Aktif Nikto Taraması Yap</label>
+            </div>
         </form>
-        <div id="loader" style="display:none; text-align:center; padding: 20px;">Yükleniyor...</div>
         <div id="results" class="results-grid"></div>
+        <div id="log-container" class="full-width" style="display:none;">
+            <h2>Canlı Analiz Logları</h2>
+            <textarea id="log-output" readonly></textarea>
+        </div>
     </div>
 
     <script>
         document.getElementById('analyze-form').addEventListener('submit', async function(e) {
             e.preventDefault();
             const domain = document.getElementById('domain-input').value;
-            const resultsDiv = document.getElementById('results');
-            const loader = document.getElementById('loader');
+            const isNiktoChecked = document.getElementById('run-nikto-checkbox').checked;
             
+            // Alanları temizle ve hazırla
+            const resultsDiv = document.getElementById('results');
+            const logContainer = document.getElementById('log-container');
+            const logOutput = document.getElementById('log-output');
             resultsDiv.innerHTML = '';
-            loader.style.display = 'block';
+            logOutput.value = '';
+            logContainer.style.display = 'none';
 
+            // Fetch API ile stream'i dinlemeye başla
             const response = await fetch('/analyze', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url: domain})
+                body: JSON.stringify({ url: domain, run_nikto: isNiktoChecked })
             });
-            
-            loader.style.display = 'none';
-            const data = await response.json();
 
-            // Sonuçları ekrana bas
+            // Gelen veri akışını okumak için bir reader oluştur
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) {
+                    break;
+                }
+                // Gelen veriyi metne çevir ve buffer'a ekle
+                buffer += decoder.decode(value, { stream: true });
+
+                // Pasif sonuçlar için özel bloğu ara
+                const startMarker = "START_PASSIVE_RESULTS\n";
+                const endMarker = "\nEND_PASSIVE_RESULTS\n";
+                if (buffer.includes(startMarker) && buffer.includes(endMarker)) {
+                    const startIndex = buffer.indexOf(startMarker) + startMarker.length;
+                    const endIndex = buffer.indexOf(endMarker);
+                    const passiveJsonString = buffer.substring(startIndex, endIndex);
+                    
+                    try {
+                        const passiveData = JSON.parse(passiveJsonString);
+                        displayPassiveResults(passiveData);
+                    } catch(e) {
+                        console.error("Pasif sonuçlar parse edilemedi:", e);
+                    }
+                    
+                    // İşlenen kısmı buffer'dan çıkar
+                    buffer = buffer.substring(endIndex + endMarker.length);
+                }
+
+                // Geri kalan veriyi log kutusuna yaz
+                if(buffer.length > 0) {
+                    if (isNiktoChecked) {
+                        logContainer.style.display = 'block';
+                    }
+                    logOutput.value += buffer;
+                    logOutput.scrollTop = logOutput.scrollHeight; // Otomatik aşağı kaydır
+                    buffer = ''; // Log kutusuna yazılanı buffer'dan temizle
+                }
+            }
+        });
+
+        function displayPassiveResults(data) {
+            const resultsDiv = document.getElementById('results');
             resultsDiv.innerHTML = `
                 <div class="result-box"><h2>WHOIS</h2><pre>${JSON.stringify(data.whois, null, 2)}</pre></div>
                 <div class="result-box"><h2>DNS Kayıtları</h2><pre>${JSON.stringify(data.dns, null, 2)}</pre></div>
                 <div class="result-box"><h2>Kullanılan Teknolojiler</h2><pre>${JSON.stringify(data.tech, null, 2)}</pre></div>
                 <div class="result-box"><h2>HTTP Başlıkları</h2><pre>${JSON.stringify(data.headers, null, 2)}</pre></div>
             `;
-        });
+        }
     </script>
 </body>
 </html>
