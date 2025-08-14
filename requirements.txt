@@ -1,0 +1,8 @@
+# requirements.txt
+Flask
+Flask-Cors
+requests
+python-whois
+dnspython
+webtech
+gunicorn

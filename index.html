@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <title>Pasif Analiz Aracı</title>
+    <style>
+        body { font-family: sans-serif; background-color: #f0f2f5; }
+        .container { max-width: 900px; margin: 20px auto; padding: 20px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input[type="text"] { width: 70%; padding: 10px; font-size: 16px; }
+        button { padding: 10px 15px; font-size: 16px; cursor: pointer; }
+        .results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;}
+        .result-box { padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        h2 { border-bottom: 2px solid #007bff; padding-bottom: 5px; }
+        pre { background: #eee; padding: 10px; white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Pasif Bilgi Toplama Aracı</h1>
+        <form id="analyze-form">
+            <input type="text" id="domain-input" placeholder="example.com" required>
+            <button type="submit">Analiz Et</button>
+        </form>
+        <div id="loader" style="display:none; text-align:center; padding: 20px;">Yükleniyor...</div>
+        <div id="results" class="results-grid"></div>
+    </div>
+
+    <script>
+        document.getElementById('analyze-form').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const domain = document.getElementById('domain-input').value;
+            const resultsDiv = document.getElementById('results');
+            const loader = document.getElementById('loader');
+            
+            resultsDiv.innerHTML = '';
+            loader.style.display = 'block';
+
+            const response = await fetch('/analyze', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url: domain})
+            });
+            
+            loader.style.display = 'none';
+            const data = await response.json();
+
+            // Sonuçları ekrana bas
+            resultsDiv.innerHTML = `
+                <div class="result-box"><h2>WHOIS</h2><pre>${JSON.stringify(data.whois, null, 2)}</pre></div>
+                <div class="result-box"><h2>DNS Kayıtları</h2><pre>${JSON.stringify(data.dns, null, 2)}</pre></div>
+                <div class="result-box"><h2>Kullanılan Teknolojiler</h2><pre>${JSON.stringify(data.tech, null, 2)}</pre></div>
+                <div class="result-box"><h2>HTTP Başlıkları</h2><pre>${JSON.stringify(data.headers, null, 2)}</pre></div>
+            `;
+        });
+    </script>
+</body>
+</html>
